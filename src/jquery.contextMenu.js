@@ -902,9 +902,7 @@
                 opt.$selected = root.$selected = $this;
                 root.unselectedMenu = null;
 
-                // position sub-menu - do after show so dumb $.ui.position can keep up
-                if (typeof submenu1st === 'boolean' && opt.$node) {
-                    root.positionSubmenu.call(opt.$node, opt.$menu);
+                if ($this.hasClass('context-menu-submenu') && typeof submenu1st === 'boolean') {
                     // call nextcommand to move focus to sub-menu
                     opt.$selected = root.$selected = null;
                     opt.$menu.trigger('nextcommand');
@@ -913,6 +911,11 @@
                         root.unselectedMenu = opt.$menu.get(0);
                         opt.$selected.trigger('contextmenu:blur');
                     }
+                }
+
+                // position sub-menu - do after show so dumb $.ui.position can keep up
+                if (opt.$node) {
+                    root.positionSubmenu.call(opt.$node, opt.$menu);
                 }
             },
             // blur <command>
