@@ -590,22 +590,16 @@
                             var $parent = opt.$selected.parent().parent();
                             opt.$selected.trigger('contextmenu:blur');
                             opt.$selected = $parent;
+                            opt.$selected.removeClass(opt.classNames.visible);
                             return;
                         }
                         break;
 
                     case 39: // right
                         handle.keyStop(e, opt);
-                        if (opt.isInput || !opt.$selected || !opt.$selected.length) {
-                            break;
-                        }
-
-                        var itemdata = opt.$selected.data('contextMenu') || {};
-                        if (itemdata.$menu && opt.$selected.hasClass('context-menu-submenu')) {
-                            opt.$selected = null;
-                            itemdata.$selected = null;
-                            itemdata.$menu.trigger('nextcommand');
-                            return;
+                        if (!opt.isInput && typeof opt.$selected !== 'undefined' && opt.$selected !== null &&
+                                opt.$selected.hasClass('context-menu-submenu')) {
+                            opt.$selected.trigger('contextmenu:focus', [true]);
                         }
                         break;
 
@@ -632,7 +626,11 @@
                             break;
                         }
                         if (typeof opt.$selected !== 'undefined' && opt.$selected !== null) {
-                            opt.$selected.trigger('mouseup');
+                            if (opt.$selected.hasClass('context-menu-submenu')) {
+                                opt.$selected.trigger('contextmenu:focus', [true]);
+                            } else {
+                                opt.$selected.trigger('mouseup');
+                            }
                         }
                         return;
 
@@ -652,7 +650,11 @@
                         var k = (String.fromCharCode(e.keyCode)).toUpperCase();
                         if (opt.accesskeys && opt.accesskeys[k]) {
                             // according to the specs accesskeys must be invoked immediately
-                            opt.accesskeys[k].$node.trigger(opt.accesskeys[k].$menu ? 'contextmenu:focus' : 'mouseup');
+                            if (opt.accesskeys[k].$menu) {
+                                opt.accesskeys[k].$node.trigger('contextmenu:focus', [true]);
+                            } else {
+                                opt.accesskeys[k].$node.trigger('mouseup');
+                            }
                             return;
                         }
                         break;
@@ -665,7 +667,7 @@
                 }
             },
             // select previous possible command in menu
-            prevItem: function (e) {
+            prevItem: function (e, submenu1st) {
                 e.stopPropagation();
                 var opt = $(this).data('contextMenu') || {};
                 var root = $(this).data('contextMenuRoot') || {};
@@ -678,8 +680,10 @@
                 }
 
                 var $children = opt.$menu.children(),
-                    $prev = !opt.$selected || !opt.$selected.prev().length ? $children.last() : opt.$selected.prev(),
+                    $prev = root.unselectedMenu === opt.$menu.get(0) ||
+                        !opt.$selected || !opt.$selected.prev().length ? $children.last() : opt.$selected.prev(),
                     $round = $prev;
+                root.unselectedMenu = null;
 
                 // skip disabled or hidden elements
                 while ($prev.hasClass(root.classNames.disabled) || $prev.hasClass(root.classNames.notSelectable) || $prev.is(':hidden')) {
@@ -699,8 +703,8 @@
                     handle.itemMouseleave.call(opt.$selected.get(0), e);
                 }
 
-                // activate next
-                handle.itemMouseenter.call($prev.get(0), e);
+                // activate prev
+                handle.itemMouseenter.call($prev.get(0), e, submenu1st);
 
                 // focus input
                 var $input = $prev.find('input, textarea, select');
@@ -709,7 +713,7 @@
                 }
             },
             // select next possible command in menu
-            nextItem: function (e) {
+            nextItem: function (e, submenu1st) {
                 e.stopPropagation();
                 var opt = $(this).data('contextMenu') || {};
                 var root = $(this).data('contextMenuRoot') || {};
@@ -722,10 +726,12 @@
                 }
 
                 var $children = opt.$menu.children(),
-                    $next = !opt.$selected || !opt.$selected.next().length ? $children.first() : opt.$selected.next(),
+                    $next = root.unselectedMenu === opt.$menu.get(0) ||
+                        !opt.$selected || !opt.$selected.next().length ? $children.first() : opt.$selected.next(),
                     $round = $next;
+                root.unselectedMenu = null;
 
-                // skip disabled
+                // skip disabled or hidden elements
                 while ($next.hasClass(root.classNames.disabled) || $next.hasClass(root.classNames.notSelectable) || $next.is(':hidden')) {
                     if ($next.next().length) {
                         $next = $next.next();
@@ -744,7 +750,7 @@
                 }
 
                 // activate next
-                handle.itemMouseenter.call($next.get(0), e);
+                handle.itemMouseenter.call($next.get(0), e, submenu1st);
 
                 // focus input
                 var $input = $next.find('input, textarea, select');
@@ -784,7 +790,7 @@
                 }
             },
             // :hover done manually so key handling is possible
-            itemMouseenter: function (e) {
+            itemMouseenter: function (e, submenu1st) {
                 var $this = $(this),
                     data = $this.data(),
                     opt = data.contextMenu,
@@ -808,7 +814,8 @@
                     return;
                 }
 
-                $this.trigger('contextmenu:focus');
+                // when native mouseenter event is fired, try to show sub-menu
+                $this.trigger('contextmenu:focus', [e.type === 'mouseenter' ? false : submenu1st]);
             },
             // :hover done manually so key handling is possible
             itemMouseleave: function (e) {
@@ -874,7 +881,7 @@
                 op.hide.call(root.$trigger, root, data && data.force);
             },
             // focus <command>
-            focusItem: function (e) {
+            focusItem: function (e, submenu1st) {
                 e.stopPropagation();
                 var $this = $(this),
                     data = $this.data(),
@@ -882,7 +889,9 @@
                     root = data.contextMenuRoot;
 
                 $this
-                    .addClass([root.classNames.hover, root.classNames.visible].join(' '))
+                    .addClass(root.classNames.hover +
+                        // show sub-menu even if submenu1st is false
+                        (typeof submenu1st === 'boolean' ? ' ' + root.classNames.visible : ''))
                     // select other items and included items
                     .parent().find('.context-menu-item').not($this)
                     .removeClass(root.classNames.visible)
@@ -891,10 +900,19 @@
 
                 // remember selected
                 opt.$selected = root.$selected = $this;
+                root.unselectedMenu = null;
 
                 // position sub-menu - do after show so dumb $.ui.position can keep up
-                if (opt.$node) {
+                if (typeof submenu1st === 'boolean' && opt.$node) {
                     root.positionSubmenu.call(opt.$node, opt.$menu);
+                    // call nextcommand to move focus to sub-menu
+                    opt.$selected = root.$selected = null;
+                    opt.$menu.trigger('nextcommand');
+                    if (!submenu1st) {
+                        // keep the sub-menu that has no selected item for next key event
+                        root.unselectedMenu = opt.$menu.get(0);
+                        opt.$selected.trigger('contextmenu:blur');
+                    }
                 }
             },
             // blur <command>
