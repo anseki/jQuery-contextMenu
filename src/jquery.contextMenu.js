@@ -904,7 +904,7 @@
                     // call nextcommand to move focus to sub-menu
                     opt.$selected = root.$selected = null;
                     opt.$menu.trigger('nextcommand');
-                    if (!submenu1st) {
+                    if (!submenu1st && opt.$selected) {
                         // keep the sub-menu that has no selected item for next key event
                         root.unselectedMenu = opt.$menu.get(0);
                         opt.$selected.trigger('contextmenu:blur');
